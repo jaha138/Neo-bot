@@ -45,6 +45,9 @@ def build_session(count: int) -> dict:
     }
 
 
+LETTERS = ["A", "B", "C", "D", "E", "F"]
+
+
 def make_question_payload(session: dict):
     q_index = session["order"][session["pos"]]
     q = ALL_QUESTIONS[q_index]
@@ -54,12 +57,20 @@ def make_question_payload(session: dict):
     session["current_correct"] = q["correct"]
     session["answered"] = False
 
-    text = f"❓ {session['pos'] + 1}/{len(session['order'])}\n\n{q['question']}"
+    options_text = "\n".join(
+        f"{LETTERS[i]}) {opt}" for i, opt in enumerate(options)
+    )
+    text = (
+        f"❓ {session['pos'] + 1}/{len(session['order'])}\n\n"
+        f"{q['question']}\n\n{options_text}"
+    )
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=opt, callback_data=f"ans:{i}")]
-            for i, opt in enumerate(options)
+            [
+                InlineKeyboardButton(text=LETTERS[i], callback_data=f"ans:{i}")
+                for i in range(len(options))
+            ]
         ]
     )
     return text, keyboard
