@@ -31,7 +31,7 @@ dp = Dispatcher()
 sessions: dict[int, dict] = {}
 
 
-def build_session(count: int) -> dict:
+def build_random_session(count: int) -> dict:
     indices = list(range(TOTAL))
     random.shuffle(indices)
     indices = indices[:count]
@@ -43,6 +43,28 @@ def build_session(count: int) -> dict:
         "current_correct": None,
         "answered": False,
     }
+
+
+def build_sequential_session(start: int, end: int) -> dict:
+    # start/end are 1-based, inclusive
+    indices = list(range(start - 1, end))
+    return {
+        "order": indices,
+        "pos": 0,
+        "score": 0,
+        "current_options": None,
+        "current_correct": None,
+        "answered": False,
+    }
+
+
+BLOCK_SIZE = 20
+BLOCKS = []
+_start = 1
+while _start <= TOTAL:
+    _end = min(_start + BLOCK_SIZE - 1, TOTAL)
+    BLOCKS.append((_start, _end))
+    _start = _end + 1
 
 
 LETTERS = ["A", "B", "C", "D", "E", "F"]
@@ -96,14 +118,17 @@ async def finish_quiz(chat_id: int, session: dict):
 
 
 def main_menu_text() -> str:
+    blocks_text = "\n".join(
+        f"/block{i + 1} — {start}-{end} savollar"
+        for i, (start, end) in enumerate(BLOCKS)
+    )
     return (
         "🎓 MUM bo'yicha test!\n\n"
         f"Jami savollar bazasi: {TOTAL} ta\n\n"
-        "🎲 Tanlang:\n"
-        "/quiz10 — 10 ta savol\n"
-        "/quiz20 — 20 ta savol\n"
-        "/quiz50 — 50 ta savol\n"
-        "/quizall — barcha savollar\n\n"
+        "📦 Bloklar bo'yicha:\n"
+        f"{blocks_text}\n\n"
+        "🎲 /random20 — 20 ta savol tasodifiy tanlanadi\n"
+        "📋 /all — barcha savollar ketma-ket\n\n"
         "/stop — testni to'xtatish"
     )
 
@@ -123,32 +148,45 @@ async def cmd_stop(message: Message):
         await message.answer("Hozircha faol test yo'q. /start")
 
 
-async def start_quiz(message: Message, count: int):
-    count = min(count, TOTAL)
-    session = build_session(count)
+async def start_session(message: Message, session: dict, intro: str):
     sessions[message.chat.id] = session
-    await message.answer(f"✅ {count} ta savol. Boshlandi! 👇")
+    await message.answer(intro)
     await send_question(message.chat.id, session)
 
 
-@dp.message(Command("quiz10"))
-async def cmd_quiz10(message: Message):
-    await start_quiz(message, 10)
+async def start_block_quiz(message: Message, start: int, end: int):
+    session = build_sequential_session(start, end)
+    total = end - start + 1
+    await start_session(
+        message, session, f"✅ Blok {start}-{end} ({total} ta savol). Boshlandi! 👇"
+    )
 
 
-@dp.message(Command("quiz20"))
-async def cmd_quiz20(message: Message):
-    await start_quiz(message, 20)
+def register_block_handler(index: int, start: int, end: int):
+    @dp.message(Command(f"block{index}"))
+    async def _handler(message: Message):
+        await start_block_quiz(message, start, end)
 
 
-@dp.message(Command("quiz50"))
-async def cmd_quiz50(message: Message):
-    await start_quiz(message, 50)
+for _i, (_start, _end) in enumerate(BLOCKS):
+    register_block_handler(_i + 1, _start, _end)
 
 
-@dp.message(Command("quizall"))
-async def cmd_quizall(message: Message):
-    await start_quiz(message, TOTAL)
+@dp.message(Command("random20"))
+async def cmd_random20(message: Message):
+    count = min(20, TOTAL)
+    session = build_random_session(count)
+    await start_session(
+        message, session, f"✅ {count} ta savol (tasodifiy). Boshlandi! 👇"
+    )
+
+
+@dp.message(Command("all"))
+async def cmd_all(message: Message):
+    session = build_sequential_session(1, TOTAL)
+    await start_session(
+        message, session, f"✅ Barcha {TOTAL} ta savol. Boshlandi! 👇"
+    )
 
 
 @dp.callback_query(F.data.startswith("ans:"))
